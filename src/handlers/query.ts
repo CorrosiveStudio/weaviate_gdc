@@ -230,42 +230,33 @@ async function executeSingleQuery(
   return { rows };
 }
 
-function getNearVectorFilter(expression: Expression, negated = false, ored = false): string[] {
+function getNearVectorFilter(expression: Expression, negated = false, ored = false): number[] {
   switch (expression.type) {
     case "not":
       return getNearVectorFilter(expression.expression, !negated, ored);
     case "and":
-      return expression.expressions
-        .map((expression) => getNearVectorFilter(expression, negated, ored))
-        .flat()
-        .filter((filter) => filter !== null);
     case "or":
       return expression.expressions
-        .map((expression) => getNearVectorFilter(expression, negated, true))
+        .map((exp) => getNearVectorFilter(exp, negated, ored === (expression.type === "or")))
         .flat()
         .filter((filter) => filter !== null);
     case "binary_op":
-      switch (expression.operator) {
-        case "near_vector":
-          if (negated) {
-            throw new Error("Negated near_vector not supported");
-          }
-          if (ored) {
-            throw new Error("Ored near_vector not supported");
-          }
-          switch (expression.value.type) {
-            case "scalar":
-              return [expression.value.value];
-            case "column":
-              throw new Error("Column comparison not implemented");
-          }
-        default:
-          return [];
+      if (expression.operator === "near_vector" && expression.value.type === "scalar") {
+        if (negated) {
+          throw new Error("Negated near_vector not supported");
+        }
+        if (ored) {
+          throw new Error("Ored near_vector not supported");
+        }
+        // Assuming expression.value.value is a stringified array of numbers
+        return JSON.parse(expression.value.value);
       }
+      return [];
     default:
       return [];
   }
 }
+
 
 
 function getNearTextFitler(
@@ -388,6 +379,9 @@ export function queryWhereOperator(
         case "near_text":
           // silently ignore near_text operator
           return null;
+          case "near_vector":
+            // silently ignore near_vector operator
+            return null;
         default:
           throw new Error(
             `Unsupported binary comparison operator: ${expression.operator}`
