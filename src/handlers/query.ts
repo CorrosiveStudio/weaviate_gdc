@@ -150,10 +150,17 @@ async function executeSingleQuery(
 
   if (query.where) {
     const nearTextFilter = getNearTextFitler(query.where);
+    const nearVectorFilter = getNearVectorFilter(query.where);
 
     if (nearTextFilter.length > 0) {
       getter.withNearText({
         concepts: nearTextFilter,
+      });
+    }
+
+    if (nearVectorFilter.length > 0) {
+      getter.withNearVector({
+        vector: nearVectorFilter,
       });
     }
   }
@@ -222,6 +229,44 @@ async function executeSingleQuery(
 
   return { rows };
 }
+
+function getNearVectorFilter(expression: Expression, negated = false, ored = false): string[] {
+  switch (expression.type) {
+    case "not":
+      return getNearVectorFilter(expression.expression, !negated, ored);
+    case "and":
+      return expression.expressions
+        .map((expression) => getNearVectorFilter(expression, negated, ored))
+        .flat()
+        .filter((filter) => filter !== null);
+    case "or":
+      return expression.expressions
+        .map((expression) => getNearVectorFilter(expression, negated, true))
+        .flat()
+        .filter((filter) => filter !== null);
+    case "binary_op":
+      switch (expression.operator) {
+        case "near_vector":
+          if (negated) {
+            throw new Error("Negated near_vector not supported");
+          }
+          if (ored) {
+            throw new Error("Ored near_vector not supported");
+          }
+          switch (expression.value.type) {
+            case "scalar":
+              return [expression.value.value];
+            case "column":
+              throw new Error("Column comparison not implemented");
+          }
+        default:
+          return [];
+      }
+    default:
+      return [];
+  }
+}
+
 
 function getNearTextFitler(
   expression: Expression,
