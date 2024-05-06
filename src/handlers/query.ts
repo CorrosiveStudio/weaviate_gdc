@@ -156,6 +156,14 @@ async function executeSingleQuery(
         concepts: nearTextFilter,
       });
     }
+
+    const nearVectorFilter = getNearVectorFilter(query.where);
+    if (nearVectorFilter !== null) {
+      getter.withNearVector({
+        vector: nearVectorFilter
+      });
+    }
+    
   }
 
   if (forEachWhere) {
@@ -178,7 +186,7 @@ async function executeSingleQuery(
     if (where !== null) {
       getter.withWhere(where);
     }
-  }
+  }  
 
   const response = await getter.do();
 
@@ -222,6 +230,34 @@ async function executeSingleQuery(
 
   return { rows };
 }
+
+function getNearVectorFilter(expression: Expression): number[] | null {
+  // Only handle the `binary_op` type with the `near_vector` operator
+  if (expression.type === 'binary_op' && expression.operator === 'near_vector') {
+    // Check if the value is of type 'scalar' and contains the vector as a string
+    if (expression.value.type === 'scalar') {
+      // Parse the string to extract vector values
+      try {
+        const vectorString = expression.value.value; // This is expected to be a string like "[0.1, 0.2, 0.3]"
+        const vectorArray = JSON.parse(vectorString); // Parse the string to get an array
+        if (Array.isArray(vectorArray) && vectorArray.every(num => typeof num === 'number')) {
+          return vectorArray;
+        } else {
+          console.error("Invalid vector format:", vectorArray);
+        }
+      } catch (error) {
+        console.error("Error parsing vector:", error);
+      }
+    } else {
+      console.error("Expected 'scalar' type for near_vector value, received:", expression.value.type);
+    }
+  }
+
+  // Return `null` if the expression is not recognized or the vector is not correctly formatted
+  return null;
+}
+
+
 
 function getNearTextFitler(
   expression: Expression,
@@ -342,6 +378,8 @@ export function queryWhereOperator(
           };
         case "near_text":
           // silently ignore near_text operator
+          return null;
+        case "near_vector":
           return null;
         default:
           throw new Error(
